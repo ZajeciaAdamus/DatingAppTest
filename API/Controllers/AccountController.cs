@@ -4,13 +4,12 @@ using API.Data;
 using API.DTOs;
 using API.Entities;
 using API.Interfaces;
+using API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace API.Controllers;
-
-[Authorize]
 public class AccountController : BaseApiController
 {
     private readonly DataContext _context;
@@ -22,19 +21,19 @@ public class AccountController : BaseApiController
         _context = context;
     }
 
-    [HttpPost("register")] // /api/account/register
+    [HttpPost("Register")] // POST: api/account/register
     public async Task<ActionResult<UserDto>> Register(RegisterDto registerDto)
-    {
-        if(await UserExists(registerDto.Username))
-            return BadRequest("User is taken and exists!");
-
+    {   
+        if (await UserExists(registerDto.Username)) return BadRequest("Username is taken and exists!");
+        // generujemy hasło algorytmem SHA512
+        // using jest tu potrzebne do zwolnienia pamięci po wygenerowaniu hasła,
+        // po prostu GarbageCollector szybciej wyczyści pamięć
         using var hmac = new HMACSHA512();
 
         var user = new AppUser
         {
             UserName = registerDto.Username.ToLower(),
-            PasswordHash = hmac.ComputeHash(Encoding.UTF8
-                                            .GetBytes(registerDto.Password)),
+            PasswordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(registerDto.Password)),
             PasswordSalt = hmac.Key
         };
 
@@ -48,20 +47,19 @@ public class AccountController : BaseApiController
         };
     }
 
-    [HttpPost("login")] // api/account/login
+    [HttpPost("login")]
     public async Task<ActionResult<UserDto>> Login(LoginDto loginDto)
     {
-        var user = await _context.Users
-                         .SingleOrDefaultAsync(user => user.UserName == loginDto.Username);
+        var user = await _context.Users.SingleOrDefaultAsync(user =>
+            user.UserName == loginDto.Username);
         
-        if (user == null) return Unauthorized("Invalid username.");
+        if (user == null) return Unauthorized("Invalid username");
 
         using var hmac = new HMACSHA512(user.PasswordSalt);
         var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(loginDto.Password));
-        
         for (int i = 0; i < computedHash.Length; i++)
         {
-            if(computedHash[i] != user.PasswordHash[i]) return Unauthorized("Invalid password!");
+            if (computedHash[i] != user.PasswordHash[i]) return Unauthorized("Invalid password");
         }
 
         return new UserDto
@@ -71,12 +69,9 @@ public class AccountController : BaseApiController
         };
     }
 
-    public async Task<bool> UserExists(string username)
-    {
-        return await _context.Users.AnyAsync(user =>
-                                             user.UserName == username
-                                             .ToLower());
+    // sprawdzamy czy taki użytkownik istnieje u nas w bazie danych
+    public async Task<bool> UserExists(string username){
+        return await _context.Users.AnyAsync(user => user.UserName == username.ToLower());
     }
 
-    
 }
